@@ -8,7 +8,8 @@ $(document).ready(function () {
       $('#buttonLabel').html(tableau.extensions.settings.get(buttonLabelKey));
     };
     if (tableau.extensions.environment.context == "desktop") {
-      $('#exportBtn').click(exportToWindow);
+      //$('#exportBtn').click(exportToWindow);
+      $('#exportBtn').click(exportToDownloadPage);
     } else {
       $('#exportBtn').click(exportToExcel);
     }
@@ -55,9 +56,9 @@ $(document).ready(function () {
 
 //Get directory of current window
 function curDirPath() {
-    const location = window.location.href;
-    const dirPath = location.substring(0, location.lastIndexOf("/"));
-    return dirPath;
+  const location = window.location.href;
+  const dirPath = location.substring(0, location.lastIndexOf("/"));
+  return dirPath;
 }
 
 
@@ -78,22 +79,49 @@ function configure() {
 }
 
 function exportToWindow() {
-      const popupUrl = `${curDirPath()}/summary.html`;
-      tableau.extensions.ui.displayDialogAsync(popupUrl, 'Payload Message', { height: 500, width: 800 }).then((closePayload) => {
+  const popupUrl = `${curDirPath()}/summary.html`;
+  tableau.extensions.ui.displayDialogAsync(popupUrl, 'Payload Message', { height: 500, width: 800 }).then((closePayload) => {
 
-      }).catch((error) => {
-        switch(error.errorCode) {
-          case tableau.ErrorCodes.DialogClosedByUser:
-            console.log("Dialog was closed by user");
-            break;
-          default:
-            console.error(error.message);
-        }
-      });
+  }).catch((error) => {
+    switch(error.errorCode) {
+      case tableau.ErrorCodes.DialogClosedByUser:
+        console.log("Dialog was closed by user");
+        break;
+      default:
+        console.error(error.message);
     }
+  });
+}
 
 
-function exportToExcel() {
+
+var downloadPage;
+function exportToDownloadPage() {
+
+  const uid = servfunc.ID();
+  const qry = $.param( {uid: uid} );
+  var xlblob = {};
+
+  // Must open new window here, before data is sent (because subsequent operations are using promises and 
+  // opening windows within promises is not supported for security reasons)
+  // https://stackoverflow.com/a/33362850/2736453
+  const remotepopupUrl = `${curDirPath()}/download.html?${qry}`;
+  window.open(remotepopupUrl);
+
+  buildExcelBlob( function(wb) {
+    var wopts = { bookType:'xlsx', bookSST:true, type:'array', ignoreEC:false };
+    var wbout = XLSX.write(wb,wopts);
+    xlblob = new Blob([wbout],{type:"application/octet-stream"});
+
+    servfunc.sendBlob(uid, xlblob, function() {
+      alert("click download button in opened window to get generated excel file");
+    });
+  });
+}
+
+
+
+function exportToExcel() {  
   buildExcelBlob( (wb) => {
     // add ignoreEC:false to prevent excel crashes during text to column
     var wopts = { bookType:'xlsx', bookSST:false, type:'array', ignoreEC:false };
@@ -140,12 +168,12 @@ function buildExcelBlob(callback) {
               sheetCount = sheetCount + 1;
               XLSX.utils.book_append_sheet(wb, ws, sheetname);
               if (sheetCount == totalSheets) {
-                  callback(wb);
+                callback(wb);
               }
             });
           });
         }
-      }
+     }
   })
 }
 

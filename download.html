@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Download Excel File</title>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script lang="javascript" src="js/FileSaver.js"></script>
+    <script src="./js/servfunc.js"></script>
+    <script type="text/javascript">
+    
+	    $(document).ready(function () {
+	    	console.log('ready');
+	    		    	
+	        let qry = servfunc.deparam(window.location.search);
+	        if ('uid' in qry) {
+	            console.log('uid=',qry.uid);
+	            
+	            $("#download").click( () => {
+	                $('#error').text('');  	
+	          
+	                servfunc.loadBlob(qry.uid, ( data ) => {	                	
+	                    saveAs(data, "export.xlsx"); 
+	                }, 
+	                ( msg ) => {
+	                	$('#error').text(msg+': id='+String(qry.uid));
+	                });
+	            });
+	        }
+	        else {
+	        	$('#error').text("no 'uid' parm found in url query string: "+ window.location.search);	
+	        } 
+	    });
+    </script>
+  </head>
+  <body >
+    <h1> Download Excel File From Tableau Desktop </h1>
+    <button id="download" type="button">Download Excel File</button>
+    <p id='error' style="color:blue;font-size:16px;font-style=italic;"></p>
+  </body>
+</html>
