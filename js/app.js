@@ -52,8 +52,18 @@ $(document).ready(function () {
   });
 });
 
+
+//Get directory of current window
+function curDirPath() {
+    const location = window.location.href;
+    const dirPath = location.substring(0, location.lastIndexOf("/"));
+    return dirPath;
+}
+
+
+
 function configure() {
-  const popupUrl = `${window.location.origin}/configure.html`;
+  const popupUrl = `${curDirPath()}/configure.html`;
   tableau.extensions.ui.displayDialogAsync(popupUrl, 'Payload Message', { height: 500, width: 500 }).then((closePayload) => {
 
   }).catch((error) => {
@@ -68,21 +78,34 @@ function configure() {
 }
 
 function exportToWindow() {
-  const popupUrl = `${window.location.origin}/summary.html`;
-  tableau.extensions.ui.displayDialogAsync(popupUrl, 'Payload Message', { height: 500, width: 800 }).then((closePayload) => {
+      const popupUrl = `${curDirPath()}/summary.html`;
+      tableau.extensions.ui.displayDialogAsync(popupUrl, 'Payload Message', { height: 500, width: 800 }).then((closePayload) => {
 
-  }).catch((error) => {
-    switch(error.errorCode) {
-      case tableau.ErrorCodes.DialogClosedByUser:
-        console.log("Dialog was closed by user");
-        break;
-      default:
-        console.error(error.message);
+      }).catch((error) => {
+        switch(error.errorCode) {
+          case tableau.ErrorCodes.DialogClosedByUser:
+            console.log("Dialog was closed by user");
+            break;
+          default:
+            console.error(error.message);
+        }
+      });
     }
+
+
+function exportToExcel() {
+  buildExcelBlob( (wb) => {
+    // add ignoreEC:false to prevent excel crashes during text to column
+    var wopts = { bookType:'xlsx', bookSST:false, type:'array', ignoreEC:false };
+    var wbout = XLSX.write(wb,wopts);
+    saveAs(new Blob([wbout],{type:"application/octet-stream"}), "export.xlsx");    
   });
 }
 
-function exportToExcel() {
+
+// krisd: move excel creation to caller (to support extra export to methodss)
+// callback receives a blob to save or transfer
+function buildExcelBlob(callback) { 
   func.getMeta(function(meta) {
     console.log("Got Meta", meta);
     // func.saveSettings(meta, function(newSettings) {
@@ -117,36 +140,57 @@ function exportToExcel() {
               sheetCount = sheetCount + 1;
               XLSX.utils.book_append_sheet(wb, ws, sheetname);
               if (sheetCount == totalSheets) {
-                var wopts = { bookType:'xlsx', bookSST:false, type:'array' };
-                var wbout = XLSX.write(wb,wopts);
-                saveAs(new Blob([wbout],{type:"application/octet-stream"}), "export.xlsx");
+                  callback(wb);
               }
             });
           });
         }
       }
-    // });
   })
 }
 
-function decodeRows(columns, headers, dataset, callback, ret) {
-  if (!ret || ret == null) {
-    var retArr = [];
-  } else {
-    var retArr = ret;
-  }
-  var thisRow = dataset[0];
-  var meta = {};
-  for (var j = 0; j < columns.length; j++) {
-    if (headers.indexOf(columns[j].fieldName) > -1) {
-      meta[columns[j].fieldName] = thisRow[j].formattedValue;
+
+// krisd: Remove recursion to work with larger data sets
+// and translate cell data types
+function decodeRows(columns, headers, dataset, callback) {
+  let retArr = [];
+
+  for (let i=0; i<dataset.length; i++) {
+    let thisRow = dataset[i];
+    let meta = {};
+    for (let j = 0; j < columns.length; j++) {
+      if (headers.indexOf(columns[j].fieldName) > -1) {
+        //meta[columns[j].fieldName] = thisRow[j].formattedValue;
+
+        // krisd: let's assign the sheetjs type according to the summary data column type
+        let dtype = undefined;
+        let dval = undefined;
+        switch (columns[j].dataType) {
+          case 'int':
+          case 'float': 
+            dtype = 'n';
+            dval = Number(thisRow[j].value);  // let nums be raw w/o formatting
+            if (isNaN(dval)) dval = thisRow[j].formattedValue;  // protect in case issue
+            break;
+          case 'date':
+          case 'date-time': 
+            dtype = 'd';
+            dval = thisRow[j].formattedValue;
+            break;
+          case 'bool':
+            dtype = 'b';
+            dval = thisRow[j].formattedValue;
+            break;
+          default:
+            dtype = 's';
+            dval = thisRow[j].formattedValue;
+        }
+
+        let o = {v:dval, t:dtype};
+        meta[columns[j].fieldName] = o;
+      }
     }
+    retArr.push(meta);
   }
-  retArr.push(meta);
-  dataset.splice(0,1);
-  if (dataset.length == 0) {
-    callback(retArr);
-  } else {
-    decodeRows(columns, headers, dataset, callback, retArr);
-  }
+  callback(retArr);
 }
